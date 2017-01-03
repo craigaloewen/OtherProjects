@@ -1,0 +1,52 @@
+# Project: Project1
+# Makefile created by Dev-C++ 5.5.1
+
+CPP      = g++.exe
+CC       = gcc.exe
+WINDRES  = windres.exe
+OBJ      = main.o floodIt.o BinarySearchTree.o CParams.o utils.o FloodAIController.o CGenAlg.o CNeuralNet.o FloodGameRunner.o
+LINKOBJ  = main.o floodIt.o BinarySearchTree.o CParams.o utils.o FloodAIController.o CGenAlg.o CNeuralNet.o FloodGameRunner.o
+LIBS     = -L"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib" -L"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/lib" -L"C:/Users/Craig/Documents/SFML-2.3.2/lib" -g3
+INCS     = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Users/Craig/Documents/SFML-2.3.2/include"
+CXXINCS  = -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/x86_64-w64-mingw32/include" -I"C:/Program Files (x86)/Dev-Cpp/MinGW64/lib/gcc/x86_64-w64-mingw32/4.7.1/include/c++" -I"C:/Users/Craig/Documents/SFML-2.3.2/include"
+BIN      = floodIt.exe
+CXXFLAGS = $(CXXINCS) -g3 -std=c++11 -Wno-write-strings
+CFLAGS   = $(INCS) -g3 -std=c++11 -Wno-write-strings
+RM       = rm -f
+
+.PHONY: all all-before all-after clean clean-custom
+
+all: all-before $(BIN) all-after
+
+clean: clean-custom
+	${RM} $(OBJ) $(BIN)
+
+$(BIN): $(OBJ)
+	$(CPP) $(LINKOBJ) -o $(BIN) $(LIBS)
+
+main.o: main.cpp
+	$(CPP) -c main.cpp -o main.o $(CXXFLAGS)
+
+floodIt.o: floodIt.cpp
+	$(CPP) -c floodIt.cpp -o floodIt.o $(CXXFLAGS)
+
+BinarySearchTree.o: BinarySearchTree.cpp
+	$(CPP) -c BinarySearchTree.cpp -o BinarySearchTree.o $(CXXFLAGS)
+
+CParams.o: CParams.cpp
+	$(CPP) -c CParams.cpp -o CParams.o $(CXXFLAGS)
+
+utils.o: utils.cpp
+	$(CPP) -c utils.cpp -o utils.o $(CXXFLAGS)
+
+FloodAIController.o: FloodAIController.cpp
+	$(CPP) -c FloodAIController.cpp -o FloodAIController.o $(CXXFLAGS)
+
+CGenAlg.o: CGenAlg.cpp
+	$(CPP) -c CGenAlg.cpp -o CGenAlg.o $(CXXFLAGS)
+
+CNeuralNet.o: CNeuralNet.cpp
+	$(CPP) -c CNeuralNet.cpp -o CNeuralNet.o $(CXXFLAGS)
+
+FloodGameRunner.o: FloodGameRunner.cpp
+	$(CPP) -c FloodGameRunner.cpp -o FloodGameRunner.o $(CXXFLAGS)

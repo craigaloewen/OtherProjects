@@ -1,0 +1,1270 @@
+Processes and Threads
+A process is an instance of an application execution. It encapsulates the environment
+seen by the application being run — essentially providing it with a sort of virtual
+machine. Thus a process can be said to be an abstraction of the computer.
+The application may be a program written by a user, or a system application.
+Users may run many instances of the same application at the same time, or run
+many different applications. Each such running application is a process. The process
+only exists for the duration of executing the application.
+A thread is part of a process. In particular, it represents the actual flow of the
+computation being done. Thus each process must have at least one thread. But mul-
+tithreading is also possible, where several threads execute within the context of the
+same process, by running different instructions from the same application.
+To read more: All operating system textbooks contain extensive discussions of processes, e.g.
+Stallings chapters 3 and 9 [15] and Silberschatz and Galvin chapters 4 and 5 [14]. In general,
+Stallings is more detailed. We will point out specific references for each topic.
+2.1 What Are Processes and Threads?
+2.1.1 Processes Provide Context
+A process, being an abstraction of the computer, is largely defined by:
+• Its CPU state (register values).
+• Its address space (memory contents).
+• Its environment (as reflected in operating system tables).
+Each additional level gives a wider context for the computation.
+24
+The CPU registers contain the current state
+The current state of the CPU is given by the contents of its registers. These can be
+grouped as follows:
+• Processor Status Word (PSW): includes bits specifying things like the mode
+(privileged or normal), the outcome of the last arithmetic operation (zero, neg-
+ative, overflow, or carry), and the interrupt level (which interrupts are allowed
+and which are blocked).
+• Instruction Register (IR) with the current instruction being executed.
+• Program Counter (PC): the address of the next instruction to be executed.
+• Stack Pointer (SP): the address of the current stack frame, including the func-
+tion’s local variables and return information.
+• General purpose registers used to store addresses and data values as directed
+by the compiler. Using them effectively is an important topic in compilers, but
+does not involve the operating system.
+The memory contains the results so far
+Only a small part of an applications data can be stored in registers. The rest is in
+memory. This is typically divided into a few parts, sometimes called segments:
+Text — the application’s code. This is typically read-only, and might be shared by a
+number of processes (e.g. multiple invocations of a popular application such as
+a text editor).
+Data — the application’s predefined data structures.
+Heap — an area from which space can be allocated dynamically at runtime, using
+functions like new or malloc.
+Stack — where register values are saved, local variables allocated, and return infor-
+mation kept, in order to support function calls.
+All the addressable memory together is called the process’s address space. In modern
+systems this need not correspond directly to actual physical memory. We’ll discuss
+this later.
+Exercise 15 The different memory segments are not independent — rather, they point
+to each other (i.e. one segment can contain addresses that refer to another). Can you
+think of examples?
+25
+The environment contains the relationships with other entities
+A process does not exist in a vacuum. It typically has connections with other entities,
+such as
+• A terminal where the user is sitting.
+• Open files that are used for input and output.
+• Communication channels to other processes, possibly on other machines.
+These are listed in various operating system tables.
+Exercise 16 How does the process affect changes in its register contents, its various
+memory segments, and its environment?
+All the data about a process is kept in the PCB
+The operating system keeps all the data it needs about a process in the process control
+block (PCB) (thus another definition of a process is that it is “the entity described by
+a PCB”). This includes many of the data items described above, or at least pointers to
+where they can be found (e.g. for the address space). In addition, data needed by the
+operating system is included, for example
+• Information for calculating the process’s priority relative to other processes.
+This may include accounting information about resource use so far, such as how
+long the process has run.
+• Information about the user running the process, used to decide the process’s ac-
+cess rights (e.g. a process can only access a file if the file’s permissions allow this
+for the user running the process). In fact, the process may be said to represent
+the user to the system.
+The PCB may also contain space to save CPU register contentswhen the process is not
+running (some implementations specifically restrict the term “PCB” to this storage
+space).
+Exercise 17 We said that the stack is used to save register contents, and that the PCB
+also has space to save register contents. When is each used?
+Schematically, all the above may be summarized by the following picture, which
+shows the relationship between the different pieces of data that constitute a process:
+26
+PCB
+user kernel
+CPU
+PSW
+SP
+PC
+IR
+memory
+text
+data
+heap
+stack
+registers
+purpose
+general
+memory
+files
+accounting
+priority
+user
+CPU registers
+storage
+state
+2.1.2 Process States
+One of the important items in the PCB is the process state. Processes change state
+during their execution, sometimes by themselves (e.g. by making a system call), and
+sometimes due to an external event (e.g. when the CPU gets a timer interrupt).
+A process is represented by its PCB
+The PCB is more than just a data structure that contains information about the pro-
+cess. It actually represents the process. Thus PCBs can be linked together to repre-
+sent processes that have something in common — typically processes that are in the
+same state.
+For example, when multiple processes are ready to run, this may be represented
+as a linked list of their PCBs. When the scheduler needs to decide which process to
+run next, it traverses this list, and checks the priority of the different processes.
+Processes that are waiting for different types of events can also be linked in this
+way. For example, if several processes have issued I/O requests, and are now waiting
+for these I/O operations to complete, their PCBs can be linked in a list. When the disk
+completes an I/O operation and raises an interrupt, the operating system will look at
+this list to find the relevant process and make it ready for execution again.
+Exercise 18 What additional things may cause a process to block?
+Processes changes their state over time
+An important point is that a process may change its state. It can be ready to run at
+one instant, and blocked the next. This may be implemented by moving the PCB from
+one linked list to another.
+Graphically, the lists (or states) that a process may be in can be represented as
+different locations, and the processes may be represented by tokens that move from
+27
+one state to another according to the possible transitions. For example, the basic
+states and transitions may look like this:
+= process
+ready queue
+preemption
+CPU
+terminated newly created
+waiting for disk
+waiting for terminal
+waiting for timer
+At each moment, at most one process is in the running state, and occupying the CPU.
+Several processes may be ready to run (but can’t because we only have one processor).
+Several others may be blocked waiting for different types of events, such as a disk
+interrupt or a timer going off.
+Exercise 19 What sort of applications may wait for a timer?
+Naturally, state changes are mediated by the operating system. For example,
+when a process performs the read system call, it traps into the operating system.
+The operating system activates the disk controller to get the desired data. It then
+blocks the requesting process, changing its state from running to blocked, and link-
+ing its PCB to the list of PCBs representing processes waiting for the disk. Finally,
+it schedules another process to use the CPU, and changes that process’s state from
+ready to running. This involves removing the process’s PCB from the list of PCBs
+representing ready processes. The original requesting process will stay in the blocked
+state until the disk completes the data transfer. At that time it will cause an inter-
+rupt, and the operating system interrupt handler will change the process’s state from
+blocked to ready — moving its PCB from the list of waiting processes to the list of
+ready processes.
+States are abstracted in the process states graph
+From a process’s point of view, the above can be abstracted using three main states.
+The following graph shows these states and the transitions between them:
+28
+running
+ready blocked
+schedule
+preempt
+wait for
+event
+event done
+terminated
+created
+Processes are created in the ready state. A ready process may be scheduled to run by
+the operating system. When running, it may be preempted and returned to the ready
+state. A process may also block waiting for an event, such as an I/O operation. When
+the event occurs, the process becomes ready again. Such transitions continue until
+the process terminates.
+Exercise 20 Why should a process ever be preempted?
+Exercise 21 Why is there no arrow directly from blocked to running?
+Exercise 22 Assume the system provides processes with the capability to suspend and
+resume other processes. How will the state transition graph change?
+2.1.3 Threads
+Multithreaded processes contain multiple threads of execution
+A process may be multithreaded, in which case many executions of the code co-exist
+together. Each such thread has its own CPU state and stack, but they share the rest
+of the address space and the environment.
+In terms of abstractions, a thread embodies the abstraction of the flow of the com-
+putation, or in other words, what the CPU does. A multithreaded process is therefore
+an abstraction of a computer with multiple CPUs, that may operate in parallel. All of
+these CPUs share access to the computer’s memory contents and its peripherals (e.g.
+disk and network).
+CPU CPU CPU CPU
+...
+memory disk
+29
+The main exception in this picture is the stacks. A stack is actually a record of the
+flow of the computation: it contains a frame for each function call, including saved
+register values, return address, and local storage for this function. Therefore each
+thread must have its own stack.
+Exercise 23 In a multithreaded program, is it safe for the compiler to use registers
+to temporarily store global variables? And how about using registers to store local
+variables defined within a function?
+Exercise 24 Can one thread access local variables of another? Is doing so a good idea?
+Threads are useful for programming
+Multithreading is sometimes useful as a tool for structuring the program. For exam-
+ple, a server process may create a separate thread to handle each request it receives.
+Thus each thread does not have to worry about additional requests that arrive while
+it is working — such requests will be handled by other threads.
+Another use of multithreading is the implementation of asynchronous I/O opera-
+tions, thereby overlapping I/O with computation. The idea is that one thread performs
+the I/O operations, while another computes. Only the I/O thread blocks to wait for the
+I/O operation to complete. In the meanwhile, the other thread can continue to run.
+For example, this can be used in a word processor when the user requests to print the
+document. With multithreading, the word processor may create a separate thread
+that prepares the print job in the background, while at the same time supporting
+continued interactive work.
+Exercise 25 Asynchronous I/O is obviously useful for writing data, which can be done
+in the background. But can it also be used for reading?
+The drawback of using threads is that they may be hard to control. In particular,
+threads programming is susceptible to race conditions, where the results depend on
+the order in which threads perform certain operations on shared data. As operating
+systems also have this problem, we will discuss it below in Chapter 3.
+Threads may be an operating system abstraction
+Threads are often implemented at the operating system level, by having multiple
+thread entities associated with each process (these are sometimescalled kernel threads,
+or light-weight processes (LWP)). To do so, the PCB is split, with the parts that de-
+scribe the computation moving to the thread descriptors. Each thread then has its
+own stack and descriptor, which includes space to store register contents when the
+thread is not running. However they share all the rest of the environment, including
+the address space and open files.
+30
+Schematically, the kernel data structures and memory layout needed to implement
+kernel threads may look something like this:
+PCB
+user kernel
+text
+data
+heap
+stack 1
+stack 2
+stack 3
+stack 4
+thread descriptors
+threads
+state
+priority
+stack
+accounting
+state
+storage
+CPU reg’s
+mem
+files
+user
+text
+data
+heap
+Exercise 26 If one thread allocates a data structure from the heap, can other threads
+access it?
+At the beginning of this chapter, we said that a process is a program in execution.
+But when multiple operating-system-level threads exist within a process, it is actually
+the threads that are the active entities that represent program execution. Thus it is
+threads that change from one state (running, ready, blocked) to another. In particular,
+it is threads that block waiting for an event, and threads that are scheduled to run by
+the operating system scheduler.
+Alternatively, threads can be implemented at user level
+An alternative implementation is user-level threads. In this approach, the operating
+system does not know about the existence of threads. As far as the operating system
+is concerned, the process has a single thread of execution. But the program being
+run by this thread is actually a thread package, which provides support for multiple
+threads. This by necessity replicates many services provided by the operating system,
+e.g. the scheduling of threads and the bookkeeping involved in handling them. But it
+reduces the overhead considerably because everything is done at user level without a
+trap into the operating system.
+Schematically, the kernel data structures and memory layout needed to implement
+user threads may look something like this:
+31
+stack 3
+stack 2
+stack 1
+stack 4
+kernel user
+PCB
+stack text data
+state
+state
+stack
+thread descriptors
+heap
+accounting
+priority
+priority
+accounting
+CPU reg’s
+storage
+storage
+CPU reg’s
+memory
+files
+user
+Note the replication of data structures and work. At the operating system level, data
+about the process as a whole is maintained in the PCB and used for scheduling. But
+when it runs, the thread package creates independent threads, each with its own
+stack, and maintains data about them to perform its own internal scheduling.
+Exercise 27 Are there any drawbacks for using user-level threads?
+The problem with user-level threads is that the operating system does not know
+about them. At the operating system level, a single process represents all the threads.
+Thus if one thread performs an I/O operation, the whole process is blocked waiting
+for the I/O to complete, implying that all threads are blocked.
+Exercise 28 Can a user-level threads package avoid this problem of being blocked
+when any thread performs an I/O operation? Hint: think about a hybrid design that
+also uses kernel threads.
+Details: Implementing user-level threads with setjmp and longjmp
+The hardest problem in implementing threads is the need to switch among them. How is
+this done at user level?
+If you think about it, all you really need is the ability to store and restore the CPU’s
+general-purpose registers, to set the stack pointer (SP) to point into the correct stack,
+and to set the program counter (PC) to point at the correct instruction. This can actually
+be done with the appropriate assembler code (you can’t do it in a high-level language,
+because such languages typically don’t have a way to say you want to access the SP or PC).
+You don’t need to modify the special registers like the PSW and those used for memory
+mapping, because they reflect shared state that is common to all the threads; thus you
+don’t need to run in kernel mode to perform the thread context switch.
+In Unix, jumping from one part of the program to another can be done using the setjmp
+and longjmp functions that encapsulate the required operations. setjmp essentially
+stores the CPU state into a buffer. longjmp restores the state from a buffer created with
+setjmp. The names derive from the following reasoning: setjmp sets things up to enable
+32
+you to jump back to exactly this place in the program. longjmp performs a long jump to
+another location, and specifically, to one that was previously stored using setjmp.
+To implement threads, assume each thread has its own buffer (in our discussion of threads
+above, this is the part of the thread descriptor set aside to store registers). Given many
+threads, there is an array of such buffers called buf. In addition, let current be the index
+of the currently running thread. Thus we want to store the state of the current thread in
+buf[current]. The code that implements a context switch is then simply
+switch() {
+if (setjmp(buf[current]) == 0) {
+schedule();
+}
+}
+The setjmpfunction stores the state of the current thread in buf[current],and returns
+0. Therefore we enter the if, and the function schedule is called. Note that this is the
+general context switch function, due to our use of current. Whenever a context switch is
+performed, the thread state is stored in the correct thread’s buffer, as indexed by current.
+The schedule function, which is called from the context switch function, does the following:
+schedule() {
+new = select-thread-to-run
+current = new;
+longjmp(buf[new], 1);
+}
+new is the index of the thread we want to switch to. longjmp performs a switch to that
+thread by restoring the state that was previously stored in buf[new]. Note that this
+buffer indeed contains the state of that thread, that was stored in it by a previous call to
+setjmp. The result is that we are again inside the call to setjmp that originally stored
+the state in buf[new]. But this time, that instance of setjmp will return a value of 1,
+not 0 (this is specified by the second argument to longjmp). Thus, when the function re-
+turns, the if surrounding it will fail, and schedule will not be called again immediately.
+Instead, switch will return and execution will continue where it left off before calling the
+switching function.
+User-level thread packages, such as pthreads, are based on this type of code. But they
+provide a more convenient interface for programmers, enabling them to ignore the com-
+plexities of implementing the context switching and scheduling.
+Exercise 29 How are setjmp and longjmp implemented? do they need to run in kernel
+mode?
+33
+Exploiting multiprocessors requires operating system threads
+A special case where threads are useful is when running on a multiprocessor (a com-
+puter with several physical processors). In this case, the different threads may exe-
+cute simultaneously on different processors. This leads to a possible speedup of the
+computation due to the use of parallelism. Naturally, such parallelism will only arise
+if operating system threads are used. User-level threads that are multiplexed on a
+single operating system process cannot use more than one processor at a time.
+The following table summarizes the properties of kernel threads and user threads,
+and contrasts them with processes:
+processes kernel threads user threads
+protected from each
+other, require operating
+system to communicate
+share address space, simple communication, useful
+for application structuring
+high overhead: all oper-
+ations require a kernel
+trap, significant work
+medium overhead: oper-
+ations require a kernel
+trap, but little work
+low overhead: everything
+is done at user level
+independent: if one blocks, this does not affect the
+others
+if a thread blocks the
+whole process is blocked
+can run in parallel on different processors in a mul-
+tiprocessor
+all share the same pro-
+cessor so only one runs at
+a time
+system specific API, programs are not portable the same thread library
+may be available on sev-
+eral systems
+one size fits all application-specific
+thread management is
+possible
+In the following, our discussion of processes is generally applicable to threads as
+well. In particular, the scheduling of threads can use the same policies described
+below for processes.
+2.1.4 Operations on Processes and Threads
+As noted above, a process is an abstraction of the computer, and a thread is an ab-
+straction of the CPU. What operations are typically available on these abstractions?
+Create a new one
+The main operation on processes and threads is to create a new one. In different
+systems this may be called a fork or a spawn, of just simply create. A new process
+34
+is typically created with one thread. That thread can then create additional threads
+within that same process.
+Note that operating systems that support threads, such as Mach and Windows
+NT, have distinct system calls for processes and threads. For example, the “pro-
+cess create” call can be used to create a new process, and then “thread create” can
+be used to add threads to this process. This is an important distinction, as creating
+a new process is much heavier: you need to create a complete context, including its
+memory space. Creating a thread is much easier, as it simply hooks into an existing
+context.
+Unix originally did not support threads (it was designed in the late 1960’s). There-
+fore many Unix variants implement threads as “light-weight” processes, reusing a
+relatively large part of the process abstraction.
+Terminate an existing one
+The dual of creating a process is terminating it. A process or thread can terminate
+itself by returning from its main function, or by calling the exit system call.
+Exercise 30 If a multithreaded process terminates, what happens to its threads?
+Allowing one process to terminate another is problematic — what if the other
+process belongs to another user who does not want his process to be terminated? The
+more common interface is to allow one process to send a signal to another, as described
+below.
+Threads within the same process are less restricted, as it is assumed that if one
+terminates another this is part of what the application as a whole is supposed to do.
+Suspend execution
+A thread embodies the flow of a computation. So a desirable operation on it may be to
+stop this computation.
+A thread may suspend itself by going to sleep. This means that it tells the system
+that it has nothing to do now, and therefore should not run. A sleep is associated with
+a time: when this future time arrives, the system will wake the thread up.
+Exercise 31 Can you think of an example where this is useful?
+Threads (in the same process) can also suspend each other. Suspend is essentially
+another state in the thread state transition graph, which is similar to the blocked
+state. The counterpart of suspend is to resume another thread. A resumed thread is
+moved from the suspend state to the ready state.
+Control over execution is sometimes also useful among processes. For example,
+a debugger process may control the execution of a process executing the application
+being debugged.
+35
+Send a signal or message
+A common operation among processes is the sending of signals. A signal is often
+described as a software interrupt: the receiving process receives the signal rather
+than continuing with what it was doing before. In many cases, the signal terminates
+the process unless the process takes some action to prevent this.
+2.2 Multiprogramming: Having Multiple Processes
+in the System
+Multiprogramming means that multiple processes are handled by the system at the
+same time, typically by time slicing. It is motivated by considerations of responsive-
+ness to the users and utilization of the hardware.
+Note: terminology may be confusing
+“Job” and “process” are essentially synonyms.
+The following terms actually have slightly different meanings:
+Multitasking — having multiple processes time slice on the same processor.
+Multiprogramming — having multiple jobs in the system (either on the same processor,
+or on different processors)
+Multiprocessing — using multiple processors for the same job or system (i.e. parallel
+computing).
+When there is only one CPU, multitasking and multiprogramming are the same thing.
+In a parallel system or cluster, you can have multiprogramming without multitasking, by
+running jobs on different CPUs.
+2.2.1 Multiprogramming and Responsiveness
+One reason for multiprogramming is to improve responsiveness, which means that
+users will have to wait less (on average) for their jobs to complete.
+with FCFS, short jobs may be stuck behind long ones
+Consider the following system, in which jobs are serviced in the order they arrive
+(First Come First Serve, or FCFS):
+36
+waits
+job waits
+job 1
+arrives
+job3
+arrives
+time
+job1 runs job2 runs job3
+job 1 job2 job3
+terminates terminates
+arrives
+job2
+terminates
+Job 2 is ahead of job 3 in the queue, so when job 1 terminates, job 2 runs. However,
+job 2 is very long, so job 3 must wait a long time in the queue, even though it itself is
+short.
+If the CPU was shared, this wouldn’t happen
+Now consider an ideal system that supports processor sharing: when there are k jobs
+in the system, they all run simultaneously, but at a rate of 1/k.
+job 1
+arrives
+job2
+arrives
+job3
+arrives
+time
+job1
+job3
+job2
+job2
+terminates
+job 1
+terminates terminates
+job3
+Now job 3 does not have to wait for job 2. The time it takes is proportional to its own
+length, increased according to the current load.
+Regrettably, it is impossible to implement this ideal. But we’ll see below that it
+can be approximated by using time slicing.
+Responsiveness is important to keep users happy
+Users of early computer systems didn’t expect good responsiveness: they submitted
+a job to the operator, and came back to get the printout the next day. But when
+interactive systems were introduced, users got angry when they had to wait just a
+few minutes. Actually good responsiveness for interactive work (e.g. text editing) is
+measured in fractions of a second.
+Supporting interactive work is important because it improves productivity. A user
+can submit a job and get a response while it is “still in his head”. It is then possible
+to make modifications and repeat the cycle.
+To read more: The effect of responsiveness on users’ anxiety was studied by Guynes, who
+showed that bad responsiveness is very annoying even for people who are normally very re-
+laxed [5].
+37
+Actually, it depends on workload statistics
+The examples shown above had a short job stuck behind a long job. Is this really a
+common case?
+Consider a counter example, in which all jobs have the same length. In this case,
+a job that arrives first and starts running will also terminate before a job that arrives
+later. Therefore preempting the running job in order to run the new job delays it and
+degrades responsiveness.
+Exercise 32 Consider applications you run daily. Do they all have similar runtimes,
+or are some short and some long?
+The way to go depends on the coefficient of variation (CV) of the distribution of job
+runtimes. The coefficient of variation is the standard deviation divided by the mean.
+This is a sort of normalized version of the standard deviation, and measures how wide
+the distribution is. “Narrow” distributions have a small CV, while very wide (or fat
+tailed) distributions have a large CV. The exponential distribution has CV = 1.
+Returning to jobs in computer systems, if the CV is smaller than 1 than we can
+expect new jobs to be similar to the running job. In this case it is best to leave the
+running job alone and schedule additional jobs FCFS. If the CV is larger than 1, on the
+other hand, then we can expect new jobs to be shorter than the current job. Therefore
+it is best to preempt the current job and run the new job instead.
+Measurements from several different systems show that the distribution of job
+runtimes is heavy tailed. There are many very short jobs, some “middle” jobs, and
+few long jobs, but some of the long jobs are very long. The CV is always larger than
+1 (values from about 3 to about 70 have been reported). Therefore responsiveness is
+improved by using preemption and time slicing, and the above examples are correct.
+To read more: The benefit of using preemption when the CV of service times is greater than
+1 was established by Regis [13].
+Details: the distribution of job runtimes
+There is surprisingly little published data about real measurements of job runtimes and
+their distributions. Given the observation that the CV should be greater than 1, a com-
+mon procedure is to choose a simple distribution that matches the first two moments,
+and thus has the correct mean and CV. The chosen distribution is usually a two-stage
+hyper-exponential, i.e. the probabilistic combination of two exponentials. However, this
+procedure fails to actually create a distribution with the right shape, and might lead to
+erroneous performance evaluations, as demonstrated by Lazowska [9].
+An interesting model for interactive systems was given by Leland and Ott [10], and later
+verified by Harchol-Balter and Downey [7]. This model holds for processes that are longer
+than a couple of seconds, on Unix systems. For such processes, the observed distribution
+is
+Pr(r > t) = 1/t
+(where r denotes the process runtime). In other words, the tail of the distribution of
+runtimes has a Pareto distribution.
+38
+2.2.2 Multiprogramming and Utilization
+The second reason for multiprogramming is to improve hardware utilization.
+Applications use one system component at a time
+Consider a simple example of a system with a CPU and disk. When an application
+reads data from the disk, the CPU is idle because it has to wait for the data to arrive.
+Thus the application uses either the CPU or the disk at any given moment, but not
+both, as shown in this Gantt chart:
+CPU
+disk
+1st I/O
+operation ends
+3rd I/O
+operation
+I/O
+ends
+I/O
+operation
+2nd I/O
+ends
+I/O
+time
+idle idle idle
+idle idle idle
+Note: The time to perform I/O
+An important issue concerning the use of different devices is the time scale involved.
+It is important to note that the time scales of the CPU and I/O devices are typically
+very different. The cycle time of a modern microprocessor is on the order of part of a
+nanosecond. The time to perform a disk operation is on the order of several milliseconds.
+Thus an I/O operation takes the same time as millions of CPU instructions.
+Multiprogramming allows for simultaneous use of several components
+If more than one job is being serviced, then instead of waiting for an I/O operation to
+complete, the CPU can switch to another job. This does not guarantee that the CPU
+never has to wait, nor that the disk will always be kept busy. However it is in general
+possible to keep several systems components busy serving different jobs.
+CPU
+disk
+time
+job1 I/O
+operation ends
+I/O
+operation
+job1 I/O
+ends
+I/O
+ends
+I/O
+operation
+job2 I/O
+idle idle
+idle
+idle
+job1
+job1
+job1
+job1
+job2
+job2
+job2
+39
+Improved utilization can also lead to improved responsiveness
+Improved utilization is good in itself, because it means that the expensive hardware
+you paid for is being used, rather than sitting idle. You are getting more for your
+money.
+In addition, allowing one job to use resources left idle by another helps the first
+job to make progress. With luck, it will also terminate sooner. This is similar to
+the processor sharing idea described above, except that here we are sharing all the
+system resources, not just the CPU.
+Finally, by removing the constraint that jobs have to wait for each other, and al-
+lowing resources to be utilized instead of being left idle, more jobs can be serviced.
+This is expressed as a potential increase in throughput. Realization of this potential
+depends on the arrival of more jobs.
+Exercise 33 In the M/M/1 analysis of Chapter 10, we will see that the average re-
+sponse time grows monotonically with utilization. Does this contradict the claims
+made here?
+All this depends on an appropriate job mix
+The degree to which multiprogramming improves system utilization depends on the
+requirements of the different jobs.
+If all the jobs are compute-bound, meaning they need a lot of CPU cycles and do
+not perform much I/O, the CPU will be the bottleneck. If all the jobs are I/O-bound,
+meaning that they only compute for a little while and then perform I/O operations,
+the disk will become a bottleneck. In either case, multiprogramming will not help
+much.
+In order to use all the system components effectively, a suitable job mix is re-
+quired. For example, there could be one compute-bound application, and a few I/O-
+bound ones. Some of the applications may require a lot of memory space, while others
+require only little memory.
+Exercise 34 Under what conditions is it reasonable to have only one compute-bound
+job, but multiple I/O-bound jobs? What about the other way around?
+The operating system can create a suitable job mix by judicious long-term schedul-
+ing. Jobs that complement each other will be loaded into memory and executed. Jobs
+that contend for the same resources as other jobs will be swapped out and have to
+wait.
+The question remains of how to classify the jobs: is a new job going to be compute-
+bound or I/O bound? An estimate can be derived from the job’s history. If it has
+already performed multiple I/O operations, it will probably continue to do so. If it has
+not performed any I/O, it probably will not do much in the future, but rather continue
+to just use the CPU.
+40
+2.2.3 Multitasking for Concurrency
+When multiple applications are active concurrently they can interact
+A third reason for supporting multiple processes at once is that this allows for con-
+current programming, in which the multiple processes interact to work on the same
+problem. A typical example from Unix systems is connecting a set of processes with
+pipes. The first process generates some data (or reads it from a file), does some pro-
+cessing, and passes it on to the next process. Partitioning the computational task into
+a sequence of processes is done for the benefit of application structure and reduced
+need for buffering.
+Exercise 35 Pipes only provide sequential access to the data being piped. Why does
+this make sense?
+The use of multitasking is now common even on personal systems. Examples
+include:
+• Multitasking allows several related applications to be active simultaneously. For
+example, this is especially common with desktop publishing systems: a word
+processor may embed a figure generated by a graphic editor and a graph gen-
+erated by a spread-sheet. It is convenient to be able to switch among these
+applications dynamically rather than having to close one and open another each
+time.
+• Multitasking allows the system to perform certain tasks in the background. For
+example, a fax handling application can be started when the computer is booted,
+but left in the background to wait for arriving faxes. This enables it to receive a
+fax that arrived while the user is busy with something else.
+2.2.4 The Cost
+Multitasking also has drawbacks, which fall into three categories:
+Overhead: in order to perform a context switch (that is, stop running one process
+and start another), register values have to be stored in memory and re-loaded
+from memory. This takes instruction cycles that would otherwise be dedicated
+to user applications.
+Degraded performance: even when the CPU is running application code, its per-
+formance may be reduced. For example, we can see
+• Contention for resources such as memory: in order to run, multiple ap-
+plications need their address spaces to be loaded into memory. If the to-
+tal requirements exceed the physically available memory, this can lead to
+swapping or even thrashing (Section 4.4).
+41
+• Cache interference: switching among applications causes a corruption of
+cache state, leading to degraded performance due to more cache misses.
+Another example is possible interference with real-time tasks, such as viewing
+a movie or burning a CD.
+Complexity: a multitasking operating system has to deal with issues of synchro-
+nization and resource allocation (Chapter 3). If the different processes belong
+to different users, the system also needs to take care of security (this has been
+the standard in Unix since the 1970s, but supporting multiple users at once still
+doesn’t exist on Windows desktop systems).
+However, on the bottom line, the benefits of multiprogramming generally far outweigh
+the costs, and it is used on practically all systems.
+2.3 Scheduling Processes and Threads
+The previous section argued that time slicing should be used. But which process 1
+should be executed at each moment? This question, which relates to the processes
+that are ready to run and are loaded into memory, is called short-term scheduling.
+The action of loading the process state into the CPU is known as dispatching.
+2.3.1 Performance Metrics
+Performance depends on how you measure it
+The decision about which process to schedule might depend on what you are trying
+to achieve. There are several possible metrics that the system could try to optimize,
+including
+Response time or turnaround time — the average time from submitting a job un-
+til it terminates. This is the sum of the time spent waiting in the queue, and the
+time actually running:
+T resp = T wait + T run - time
+?
+job
+arrives
+?
+starts
+running
+?
+job
+terminates
+? -
+T wait
+waits in queue
+? -
+T run
+running
+? -
+T resp
+If jobs terminate faster, users will be happier. In interactive systems, this may
+be more of a sharp threshold: if resopnse time is less than about 0.2 seconds, it
+is OK. If it is above 2 or 3 seconds, it is bad.
+1 Whenever we say process here, we typically also mean thread, if the system is thread based.
+42
+Note: Interactivity, response, and termination
+Many interactive applications are reactive, just like the operating system; for ex-
+ample, a text editor spends most of its time waiting for user input, and when it gets
+some, it quickly handles it and returns to wait for more. Thus the notion that a job is
+submitted, waits, runs, and terminates seems to be irrelevant for such applications.
+However, we can ignore the fact that we have one continuous application running,
+and regard the handling of each input as a distinct job. Thus when the user hits
+“enter” or some other key, he is submitting a job, which waits, runs, produces a
+response, and terminates (or at least, becomes dormant). The time to termination
+is then actually the time to produce a response to the user input, which is the right
+metric. In essence, the model is that the application does not compute continuously,
+but rather performs a sequence of “CPU bursts”, interspersed by I/O activity (and
+specifically, terminal I/O waiting for user input).
+In the past, many textbooks made a distinction between turnaround time which was
+the time till the whole application terminated, and response time which was the
+time until it produced its first response. This is based on a model of an application
+that computes continuously, and generates many outputs along the way, which does
+not seem to correspond to the way that any real applications work.
+Variants on this idea are
+Wait time — reducing the time a job waits until it runs also reduces its re-
+sponse time. As the system has direct control over the waiting time, but lit-
+tle control over the actual run time, it should focus on the wait time (T wait ).
+Response ratio or slowdown — the ratio of the response time to the actual
+run time:
+slowdown =
+T resp
+T run
+This normalizes all jobs to the same scale: long jobs can wait more, and
+don’t count more than short ones.
+In real systems the definitions are a bit more complicated. For example, when
+time slicing is used, the runtime is the sum of all the times that the job runs,
+and the waiting time is all the times it waits in the ready queue — but probably
+not the times it is waiting for an I/O operation to complete.
+Throughput — the number of jobs completed in a unit of time. If there are more
+jobs completed, there should be more happy users.
+Utilization — the average percentage of the hardware (or the CPU) that is actually
+used. If the utilization is high, you are getting more value for the money invested
+in buying the computer.
+Exercise 36 The response time can be any positive number. What are the numerical
+ranges for the other metrics? When are high values better, and when are low values
+better?
+43
+Other desirable properties are predictability and fairness. While it is harder to
+quantify these properties, they seem to correlate with low variability in the service to
+different jobs.
+The chosen metric should be one that reflects the scheduler’s performance
+Not all metrics are equally applicable. For example, in many real-world situations,
+users submit jobs according to their needs. The ratio of the requirements of all the
+jobs to the available resources of the system then determines the utilization, and
+does not directly reflect the scheduler’s performance. There is only an indirect effect:
+a bad scheduler will discourage users from submitting more jobs, so the utilization
+will drop.
+In a nutshell, utilization and throughput are more directly linked to the workload
+imposed by users than to the scheduler. They become important when the system is
+overloaded. Metrics related to response time are generally better for the evaluation
+of schedulers, especially in an interactive setting.
+2.3.2 Handling a Given Set of Jobs
+While the operating system in general is reactive, the scheduling algorithm itself is
+not. A scheduling algorithm has inputs, performs a computation, and terminates pro-
+ducing an output. The input is information about the jobs that need to be scheduled.
+the output is the schedule: a decision when to run each job, or at least a decision
+which job to run now.
+We start by considering off-line algorithms, that only handle a given set of jobs
+that are all available at the outset.
+Off-line means everything is known in advance
+One important distinction is between on-line and off-line algorithms. Off-line algo-
+rithms receive complete information in advance. Thus they can benefit from two
+assumptions:
+1. All jobs are available at the outset and none arrive later 2 .
+2. The job runtimes are also known in advance.
+The assumption that all jobs are known in advance implies that this is the set of
+jobs that the scheduling algorithm needs to handle. This is a reasonable assumption
+in the context of an algorithm that is invoked repeatedly by the operating system
+whenever it is needed (e.g. when the situation changes because additional jobs arrive).
+2 Another variant allows jobs to arrive at arbitrary times, but assumes such future arrivals are also
+known in advance. This scenario is mainly of theoretical interest, as it provides a bound of what may
+be achieved with full knowledge. We will not discuss it further here.
+44
+The assumption that runtimes are known in advance is somewhat problematic.
+While there are some situations in which runtimes are known in advance (or at least
+can be estimated), in most cases this is not the case.
+Off-line algorithms run jobs to completion
+Given that off-line algorithms get all their required information at the outset, and
+that all relevant jobs are available for scheduling, they can expect no surprises during
+execution. In fact, they complete the schedule before execution even begins.
+Under these circumstances, there is no reason to ever preempt a job. Response
+time and throughput metrics depend on job completion times, so once a job is started
+it is best to complete it as soon as possible; if running another job would improve the
+metric, that other job should have been scheduled in the first place. Utilization is
+maximized as long as any job is running, so it is not a very relevant metric for off-line
+algorithms.
+The result is that off-line algorithms use “run to completion” (RTC): each job is
+executed until it terminates, and the algorithm is only concerned with the order in
+which jobs are started.
+Exercise 37 The above argument is correct when we are only scheduling on one re-
+source, e.g. the CPU. Does this change if there are multiple CPUs, but each job only
+needs one of them? What about jobs that may need more than one CPU (that is, paral-
+lel jobs)?
+FCFS is the base case
+The base case for RTC scheduling algorithms is First-Come First-Serve (FCFS). This
+algorithm simply schedules the jobs in the order in which they arrive, and runs each
+one to completion. For the off-line case, the jobs are run in the order that they appear
+in the input.
+Running short jobs first improves the average response time
+Reordering the jobs so as to run the shortest jobs first (SJF) improves the average
+response time. Consider two adjacent jobs, one longer than the other. Because the
+total time for both jobs is constant, the second job will terminate at the same time
+regardless of their order. But if the shorter one is executed first, its termination time
+will be shorter than if the long one is executed first. As a result, the average is also
+reduced when the shorter job is executed first:
+45
+short job long job
+short job long job
+average
+average start
+start
+By repeating this argument, we see that for every two adjacent jobs, we should run
+the shorter one first in order to reduce the average response time. Switching pairs of
+jobs like this is akin to bubble-sorting the jobs in order of increasing runtime. The
+minimal average response time is achieved when the jobs are sorted, and the shortest
+ones are first.
+Exercise 38 Is SJF also optimal for other metrics, such as minimizing the average
+slowdown?
+But real systems are on-line
+In real system you typically don’t know much in advance. In particular, new jobs may
+arrive unexpectedly at arbitrary times. Over the lifetime of a system, the scheduler
+will be invoked a very large number of times, and each time there will only be a
+small number of new jobs. Thus it seems ill-advised to emphasize the behavior of the
+scheduler in a single invocation. Instead, one should consider how it handles all the
+arrivals that occur over a long stretch of time.
+On-line algorithms get information about one job at a time, and need to decide
+immediately what to do with it: either schedule it or put it in a queue to be scheduled
+later. The decision may of course be influenced by the past (e.g. by previously arrived
+jobs that are already in the queue), but not by the future.
+The on-line model is also applicable to interactive or I/O-bound jobs, which have
+bursts of CPU activity separated by I/O operations (for interactive jobs, this is termi-
+nal I/O). Whenever an I/O operation completes, the job has to be scheduled again for
+its next CPU burst.
+An important tool for handling a changing situation is preemption.
+2.3.3 Using Preemption
+Preemption is the action of stopping a running job and scheduling another in its place.
+Switching from one job to another is called a context switch. Technically, this is done
+by storing the CPU register values of the running process in its PCB, selecting an
+alternative process that is ready to run, and loading the CPU register values of the
+selected process. As this includes the PC, the CPU will now continue to run the
+selected process from where it left off when it was preempted.
+46
+On-line algorithms use preemption to handle changing conditions
+On-line algorithms do not know about their input in advance: they get it piecemeal
+as time advances. Therefore they might make a scheduling decision based on cur-
+rent data, and then regret it when an additional job arrives. The solution is to use
+preemption in order to undo the previous decision.
+We start by reversing the first of the two assumptions made earlier. Thus we now
+assume that
+1. Jobs may arrive unpredictably and the scheduler must deal with those that have
+already arrived without knowing about future arrivals
+2. Nevertheless, when a job arrives its runtime is known in advance.
+The version of SJF used in this context is called “shortest remaining time first”
+(SRT) 3 . As each new job arrives, its runtime is compared with the remaining runtime
+of the currently running job. If the new job is shorter, the current job is preempted
+and the new job is run in its place. Otherwise the current job is allowed to continue
+its execution, and the new job is placed in the appropriate place in the sorted queue.
+Exercise 39 Is SRT also optimal for other metrics, such as minimizing the average
+slowdown?
+A problem with actually using this algorithm is the assumption that the run times
+of jobs are known. This may be allowed in the theoretical setting of off-line algo-
+rithms, but is usually not the case in real systems.
+An interesting counter example is provided by web servers that only serve static
+pages. In this case, the service time of a page is essentially proportional to the page
+size. Thus when a request for a certain page arrives, we can get a pretty accurate as-
+sessment of how long it will take to serve, based on the requested page’s size. Schedul-
+ing web servers in this way turns out to improve performance significantly for small
+pages, without too much effect on large ones [6].
+Preemption can also compensate for lack of knowledge
+SRT only preempts the current job when a shorter one arrives, which relies on the
+assumption that runtimes are known in advance. But a more realistic set of assump-
+tions is that
+1. Jobs may arrive unpredictably, and
+2. Job runtimes are not known in advance.
+3 Sometimes also called “shortest remaining processing time first”, or SRPT.
+47
+Using more preemptions can compensate for this lack of knowledge. The idea is to
+schedule each job for a short time quantum, and then preempt it and schedule another
+job in its place. The jobs are scheduled in round robin order: a cycle is formed, and
+each gets one time quantum. Thus the delay until a new job gets to run is limited
+to one cycle, which is the product of the number of jobs times the length of the time
+quantum. If a job is short, it will terminate within its first quantum, and have a
+relatively short response time. If it is long, it will have to wait for additional quanta.
+The system does not have to know in advance which jobs are short and which are
+long.
+Exercise 40 Round robin scheduling is often implemented by keeping a circular linked
+list of the PCBs, and a pointer to the current one. Is it better to insert new jobs just
+before the current pointer or just after it?
+Note that when each process just runs for a short time, we are actually time slic-
+ing the CPU. This results in a viable approximation to processor sharing, which was
+shown on page 37 to prevent situations in which a short job gets stuck behind a long
+one. In fact, the time it takes to run each job is more-or-less proportional to its own
+length, multiplied by the current load. This is beneficial due to the high variability of
+process runtimes: most are very short, but some are very long.
+2 job 1 2 1 2 3 1 2 3 1 2 1
+job 1
+arrives
+job2
+arrives
+job3
+arrives
+time
+job 1 job2 job3
+terminates terminates terminates
+Exercise 41 Should the time slices be long or short? Why?
+Using preemption regularly ensures that the system stays in control
+But how are time quanta enforced? This is another example where the operating sys-
+tem needs some help from the hardware. The trick is to have a hardware clock that
+causes periodic interrupts (e.g. 100 times a second, or every 10 ms). This interrupt,
+like all other interrupts, is handled by a special operating system function. Specifi-
+cally, this handler may call the scheduler which may decide to preempt the currently
+running process.
+An important benefit of having such periodic clock interrupts is that they ensure
+that the system regains control over the CPU. Without them, a rogue process may
+never relinquish the CPU, and prevent all other processes from using the system.
+In reality, however, the question of scheduling quanta is almost moot. In the vast
+majority of cases, the effective quantum is much shorter than the allocated quantum.
+48
+This is so because in most cases the process performs a system call or an external
+interrupt happens [4]. The clock interrupt therefore serves mainly as a backup.
+And it also improves fairness
+Finally, we note that even if processes do not engage in infinite loops, some are
+compute-bound while others are interactive (or I/O-bound). Without preemption,
+CPU-bound processes may lock out the interactive processes for excessive periods,
+which is undesirable. Preempting them regularly allows interactive processes to get
+a chance to run, at least once in a while. But if there are many compute-bound pro-
+cesses, this may not be enough. The solution is then to give the interactive processes
+higher priorities.
+2.3.4 Priority Scheduling
+Interactive jobs can get priority based on past behavior
+Round robin scheduling is oblivious — it does not take into account any information
+about previous behavior of the processes. All processes receive equal treatment.
+However, the system can easily accumulate information about the processes, and
+prioritize them. Interactive jobs, such as a text editor, typically interleave short bursts
+of CPU activity with I/O operations to the terminal. In order to improve responsive-
+ness, the system should give high priority to such jobs. This can be done by regarding
+the CPU burst as the unit of computing, and scheduling processes with short bursts
+first (this is a variant of SJF).
+The question remains of how to estimate the duration of the next burst. One option
+is to assume it will be like the last one. Another is to use an average of all previous
+bursts. Typically a weighted average is used, so recent activity has a greater influence
+on the estimate. For example, we can define the n + 1st estimate as
+E n+1 =
+1
+2 T n
++
+1
+4 T n-1
++
+1
+8 T n-2
++
+1
+16 T n-3
++ ...
+where E is the estimate, T is the duration of the burst, and as bursts become more
+distant they are given half the weight (a simple generalization is to use another factor
+0 = a = 1 to set the relative weights).
+Exercise 42 Can this be computed without storing information about all the previous
+bursts?
+Multi-level feedback queues learn from past behavior
+Multi-level feedback queues are a mechanism to differentiate among processes based
+on their past behavior. It is similar to the SJF-like policy described above, but simpler
+49
+and does not require the system to maintain a lot of historical information. In effect,
+the execution history of the process is encoded in the queue in which it resides, and it
+passes from queue to queue as it accumulates CPU time or blocks on I/O.
+New processes and processes that have completed I/O operations are placed in the
+first queue, where they have a high priority and receive a short quantum. If they do
+not block or terminate within this quantum, they move to the next queue, where they
+have a lower priority (so they wait longer), but then they get a longer quantum. On
+the other hand, if they do not complete their allocated quantum, they either stay in
+the same queue or even move back up one step.
+In this way, a series of queues is created: each additional queue holds jobs that
+have already run for a longer time, so they are expected to continue to run for a long
+time. Their priority is reduced so that they will not interfere with other jobs that
+are assumed to be shorter, but when they do run they are given a longer quantum to
+reduce the relative overhead of context switching. The scheduler always serves the
+lowest-numbered non-empty queue.
+CPU
+queue 0
+quantum = 10
+quantum = 20
+quantum = 40
+quantum = 80
+queue 1
+queue 2
+queue 3
+terminated
+jobs
+new jobs
+In Unix, priority is set by CPU accounting
+The Unix scheduler also prioritizes the ready processes based on CPU usage, and
+schedules the one with the highest priority (which is the lowest numerical value).
+The equation used to calculate user-level priorities is the following (when running in
+kernel mode, the priority is fixed):
+pri = cpu use + base + nice
+cpu use is recent CPU usage. This value is incremented for the running process on
+every clock interrupt (typically 100 times a second). Thus the priority of a process goes
+down as it runs. In order to adjust to changing conditions, and not to over-penalize
+long running jobs, the cpu use value is divided by two for all processes once a second
+(this is called exponential aging). Thus the priority of a process goes up as it waits in
+the ready queue.
+50
+runs
+process
+runs
+process
+CPU usage accounting
+high priority
+low priority
+(exponential aging)
+process waits in queue
+time
+base is the base priority for user processes, and distinguishes them from kernel
+priorities. A process that goes to sleep in a system call, e.g. when waiting for a disk
+operation to complete, will have a higher priority. Thus when it wakes up it will have
+preference over all user-level processes. This will allow it to complete the system
+call and release kernel resources. When it returns to user mode, its priority will be
+reduced again.
+nice is an optional additional term that users may use to reduce the priority of
+their processes, in order to be nice to their colleagues.
+Exercise 43 Does the Unix scheduler give preference to interactive jobs over CPU-
+bound jobs? If so, how?
+Exercise 44 Can a Unix process suffer from starvation?
+The implementation of Unix scheduling is essentially similar to multi-level feed-
+back queues, except that time quanta are not varied. As CPU accounting is only done
+at a rather coarse granularity, there are actually a relatively small number of possible
+priority levels: in most systems this is 32, 64, or 128 (if the range of possible account-
+ing values is larger, it is scaled to fit). The system maintains an array of pointers,
+one for each priority level. When a process is preempted or blocks, it is linked to the
+pointer that matches its current priority. The scheduler always chooses the process
+at the head of the topmost non-empty list for execution.
+Exercise 45 Assuming that CPU usage is accounted at a rate of 100Hz (that is, the us-
+age of the running process is incremented by 100 every 10ms), and that all accounts are
+halved once a second, what is the maximal priority value that a process may achieve?
+To read more: Unix scheduling is described in Bach [1, Sect. 8.1] (system V) and in McKusick
+[11, Sect. 4.4] (4.4BSD). The BSD formula is slightly more complicated.
+51
+2.3.5 Starvation, Stability, and Allocations
+Starvation may be a problem
+The problem with priority scheduling algorithms like multi-level feedback is that they
+run the risk of starving long jobs. As short jobs continue to arrive, they continuously
+populate the first queue, and the long jobs in lower queues never get to run.
+But selective starvation may be a feature
+However, it is debatable whether this is a real problem, as the continued arrival of
+short jobs implies that the system is overloaded, and actually cannot handle the load
+imposed on it. Under such conditions, jobs will necessarily be delayed by arbitrary
+amounts. Using multi-level queues just makes a distinction, and only delays the long
+jobs, while allowing the short ones to complete without undue delay.
+Exercise 46 Which of the previously described algorithms also suffers from starvation?
+The effect of the runtime distribution on starvation is also important. When the
+distribution is fat-tailed, a very small fraction of the jobs is responsible for a rather
+large fraction of the load (where load is defined here as CPU seconds of actual com-
+putation). By starving only these jobs, the system can tolerate overload while still
+providing adequate service to nearly all jobs [2].
+In fact, this is an example of a more general principle. When a system is over-
+loaded, it is extremely important to prioritize its work. Without prioritization, all
+processes are equal and all suffer an infinite delay! (at least for true processor shar-
+ing; short ones will eventually terminate when using finite quanta). Prioritization
+allows the system to selectively reject some jobs, at the same time giving reasonable
+service to others. As rejecting some jobs is unavoidable in overloaded conditions, it is
+better to do so based on system considerations and not at random.
+Unix avoids starvation by having negative feedback
+Starvation depends on prioritization being a one-way street. In multi-level feedback
+queues, as described above, a process’s priority can only drop. As a result, it may
+starve as new processes with higher priorities continue to arrive.
+But in the Unix scheduler priority is a two-way street: a process’s priority drops as
+it runs and accumulates CPU seconds, but it grows when it waits in the queue. This
+leads to a stabilizing negative feedback effect: the very act of running reduces your
+ability to run more.
+An example of how the priorities of 4 processes change over time is shown in the
+following figure. Periodic scheduling decisions (that choose the process with the low-
+est priority value) are indicated by dashed arrows from below, and periodic divisions
+of all priorities by 2 are indicated by arrows from above. Even though the processes
+52
+start with quite different priorities, they all get to run, and their priorities tend to
+converge to a relatively narrow range.
+priority
+high
+priority
+low
+reduced priority
+time
+The result of this behavior is that CPU allocations tend to be equalized — if there
+are many competing processes, they will eventually all get about the same share of
+the CPU. The only way that a process may get less than its peers is if it needs less,
+e.g. if it often blocks on I/O. As a result it will have a higher priority, and on those
+occasions when it wants to run, it will get the processor first.
+Linux avoids starvation by using allocations
+An alternative approach for avoiding starvation is to impose pre-defined allocations.
+Each process is given an allocation of CPU seconds, and then they are all allowed to
+use up their allocations before anyone’s allocation is renewed.
+An allocation-based scheme is used in the Linux system. Linux divides its time
+into epochs. At the beginning of each epoch, every process receives an allocation. The
+allocation also doubles as a priority, so processes with a larger allocation also get a
+higher priority. The scheduler always selects the process with the highest priority
+(that is, the process with the largest remaining allocation) to run. But allocations
+may run out. When this happens, the process is effectively prevented from running
+until the epoch ends.
+The duration of epochs is somewhat flexible. An epoch ends, and all allocations
+are renewed, when the scheduler finds that it has no process that can be scheduled
+to run. This may happen because all processes have exhausted their allocations, or
+because all processes with remaining allocations are currently blocked waiting for
+various events.
+Technically all this is done by keeping processes on either of two arrays: the active
+array and the expired array. Initially all processes are on the active array and eligible
+for scheduling. Each processes that exhausts its allocation is moved to the expired
+53
+array. When there are no more runnable processes on the active array, the epoch
+ends and the arrays are switched.
+Note that Linux sets process allocations based on scheduling considerations. But
+users or system administrators may also want to be able to control the relative al-
+locations of different processes. This is enabled by fair-share scheduling, dicussed
+below.
+But allocations may affect interactivity
+The Linux approach has a subtle effect on interactive processes. The crucial point
+is that allocations and priorities are correlated (in fact, they are the same number).
+Therefore if we have several high-priority interactive processes, each may run for a
+relatively long time before giving up the processor. As a result such interactive may
+have to wait a long time to get their turn to run.
+The allocations made by the simple basic multi-level feedback queues scheme
+avoid this problem [16]. In this scheme, the effective quanta are inversely propor-
+tional to the priority: the higher the priority, the shorter each allocation. This en-
+sures rapid cycling among the high priority processes, and thus short latencies until
+a process gets scheduled.
+2.3.6 Fair Share Scheduling
+Most schedulers attempt to serve all jobs as best they can, subject to the fact that
+jobs have different characteristics. Fair share scheduling is concerned with achieving
+predefined goals. This is related to quality of service guarantees.
+Administrative considerations may define “fairness”
+Fair share scheduling tries to give each job what it deserves to get. However, “fair”
+does not necessarily imply “equal”. Deciding how to share the system is an admin-
+istrative policy issue, to be handled by the system administrators. The scheduler
+should only provide to tools to implement the chosen policy. For example, a fair share
+of the machine resources might be defined to be “proportional to how much you paid
+when the machine was acquired”. Another possible criterion is your importance in the
+organization. Your fair share can also change with time, reflecting the current impor-
+tance of the project you are working on. When a customer demo is being prepared,
+those working on it get more resources than those working on the next generation of
+the system.
+Shares can be implemented by manipulating the scheduling
+A simple method for fair share scheduling is to add a term that reflects resource usage
+to the priority equation. For example, if we want to control the share of the resources
+54
+acquired by a group of users, we can add a term that reflects cumulative resource
+usage by the group members to the priority equation, so as to reduce their priority
+as they use more resources. This can be “aged” with time to allow them access again
+after a period of low usage. The problem with this approach is that it is hard to
+translate the priority differences into actual shares [8, 3].
+An alternative approach is to manipulate the time quanta: processes that should
+receive more runtime are just given longer quanta. The problem with this approach
+is that the actual runtime they receive is the product of the quantum length and how
+often they are scheduled to run. It may therefore be necessary to monitor the actual
+shares and adjust the quanta dynamically to achieve the desired division of resources.
+Exercise 47 This presentation provides fair shares at the expense of performance-driven
+priorities as used in the multi-level feedback scheme described above. Can the two be
+combined?
+To read more: Various other schemes for fair-share scheduling have been proposed in the lit-
+erature. Two very nice ones are lottery scheduling, which is based on a probabilistic allocation
+of resources [17], and virtual time round robin (VTRR), which uses a clever manipulation of
+the queue [12].
+2.4 Summary
+Abstractions
+A process is essentially an abstraction of a computer. This is one of the major abstrac-
+tions provided by multiprogrammed operating systems. It provides the operating en-
+vironment for applications, which is based on the hardware, but with some changes
+such as lack of access to privileged instructions. But the important point is the isola-
+tion from other applications, running as other processes. Each one only sees its own
+resources, and is oblivious to the activities of the others.
+Another important abstraction is that of a thread. This actually breaks the pro-
+cess abstraction into two parts: the treads, which can be viewed as an abstraction of
+the CPU and the flow of the computation, and the process, which abstracts the en-
+vironment including the address space, open files, etc. For single-threaded processes
+the distinction is of course moot, and we can say that the process abstracts the whole
+computer.
+Implementation
+Most modern operating systems support processes and threads directly. They have
+one system call to create a process, and another to create an additional thread within
+a process. Then there are many other system calls to manipulate processes and
+threads. For example, this is the situation with Windows.
+55
+Unix is somewhat unique, in providing the fork system call. Instead of creating a
+new process from scratch, this creates a clone of the calling process. This new “child”
+process can then use the exec system call to load another executable program instead
+of the one running in the parent process.
+Linux is also unique. It does not have a distinction between processes and threads.
+In effect, it only has threads (but they are called “tasks”). New ones are created by
+the clone system call, which is similar to fork, but provides detailed control over
+exactly what is shared between the parent and child.
+Resource management
+Threads abstract the CPU, and this is the main resource that needs to be managed.
+Scheduling — which is what “resource management” is in this context — is a hard
+problem. It requires detailed knowledge, e.g. how long a job will run, which is typi-
+cally not available. And then it turns out to be NP-complete.
+However, this doesn’t mean that operating systems can’t do anything. The main
+idea is to use preemption. This allows the operating system to learn about the be-
+havior of different jobs, and to reconsider its decisions periodically. This is not as
+pompous as it sounds, and is usually embodied by simple priority rules and simple
+data structures like multi-level feedback queues.
+Workload issues
+Periodical preemptions are not guaranteed to improve average response times, but
+they do. The reason is that the distribution of process runtimes is heavy-tailed. This
+is one of the best examples of a widespread operating system policy that is based on
+an empirical observation about workloads.
+Hardware support
+There are two types of hardware support that are related to processes. One is having
+a clock interrupt, and using this to regain control, to perform preemptive scheduling,
+and to implement timers.
+The other is support for isolation — preventing each process from seeing stuff that
+belongs to another process. This is a main feature of memory management mecha-
+nisms, so we will review it in Chapter 4
